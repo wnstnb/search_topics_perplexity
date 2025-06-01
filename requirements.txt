@@ -1,3 +1,7 @@
-pandas
-numpy
-openai
+# Core libraries
+python-dotenv
+# AI SDKs
+openai # Placeholder, will be replaced by perplexity and google sdks
+google-generativeai
+# HTTP requests (fallback)
+requests
