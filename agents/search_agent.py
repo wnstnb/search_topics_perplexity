@@ -1,6 +1,10 @@
 from config import PERPLEXITY_API_KEY
 from openai import OpenAI # Import OpenAI
 import json # For parsing if sources are in a JSON string
+import os
+
+CACHE_FILE = "_cache_search_results.json"
+RAW_CACHE_FILE = "_cache_search_agent_raw_api_response.json"
 
 class SearchAgent:
     def __init__(self):
@@ -18,11 +22,20 @@ class SearchAgent:
         """Queries Perplexity API to find relevant content based on the topic."""
         print(f"Searching for topic: '{topic}' using Perplexity API (model: sonar-pro)")
         
+        if os.path.exists(CACHE_FILE):
+            try:
+                with open(CACHE_FILE, 'r') as f:
+                    cached_results = json.load(f)
+                print(f"Loaded {len(cached_results)} search results from cache: {CACHE_FILE}")
+                return cached_results
+            except Exception as e:
+                print(f"Error loading search results from cache {CACHE_FILE}: {e}. Proceeding with API call.")
+
         messages = [
             {
                 "role": "system",
                 "content": (
-                    "You are an AI assistant that researches topics and provides concise, factual information, including sources when available."
+                    "You are an AI assistant that researches topics and provides concise, factual information, including sources and search results. "
                     "Focus on finding recent and relevant articles, blog posts, forum discussions, and social media threads related to the user's query."
                 ),
             },
@@ -34,65 +47,88 @@ class SearchAgent:
 
         try:
             response = self.client.chat.completions.create(
-                model="sonar-pro", # As requested by user
+                model="sonar-pro",
                 messages=messages,
-                # Perplexity might have specific parameters for temperature, max_tokens for online models
-                # For now, using defaults. Refer to Perplexity docs for specifics.
             )
             
-            print(f"-- Perplexity API Raw Response Snippet --")
-            # Convert response to dict for easier inspection if it's not already one
-            try:
-                response_dict = response.model_dump() if hasattr(response, 'model_dump') else vars(response)
-                print(json.dumps(response_dict, indent=2)[:1000] + "...")
-            except Exception as e:
-                print(f"Could not serialize full response for printing: {e}")
-                print(str(response)[:1000] + "...")
-            print("-- End of Raw Response Snippet --")
-
-            search_results = []
-            if response.choices and response.choices[0].message and response.choices[0].message.content:
-                main_content = response.choices[0].message.content.strip()
-                
-                # Placeholder for actual URL/source extraction
-                # The Perplexity API (especially online models) might provide citations or sources.
-                # How these are provided via the OpenAI-compatible SDK needs to be determined by inspecting a real response.
-                # For now, we create one result with the main content as snippet and a placeholder URL.
-                
-                # Attempt to find sources if they are structured in the response
-                # This is speculative and depends on Perplexity's actual response format via OpenAI SDK
-                urls_found = []
-                if hasattr(response, 'sources') and response.sources: # Example: if sources are a direct attribute
-                    for source in response.sources:
-                        if isinstance(source, dict) and 'url' in source:
-                            urls_found.append(source['url'])
-                # Another speculative check: sometimes metadata or context might contain source URLs
-                elif response.choices[0].message.context and isinstance(response.choices[0].message.context, dict) and 'sources' in response.choices[0].message.context:
-                    for source_info in response.choices[0].message.context['sources']:
-                        if isinstance(source_info, dict) and 'url' in source_info:
-                            urls_found.append(source_info['url'])
-                
-                if urls_found:
-                    for url in urls_found:
-                        # If we have multiple URLs, we might create multiple search_results items
-                        # or associate all URLs with the single snippet. For now, let's create one entry per URL with the same snippet.
-                        search_results.append({"url": url, "snippet": main_content[:500]}) # Truncate snippet if too long
-                else:
-                    # If no specific URLs found, use main content as snippet with a placeholder URL
-                    search_results.append({"url": "https://perplexity.ai/search", "snippet": main_content})
+            # Get the full dictionary representation of the response for raw caching
+            full_response_dict = {}
+            if hasattr(response, 'model_dump'):
+                full_response_dict = response.model_dump()
             else:
-                print("Perplexity API did not return the expected content structure.")
-                return [] # Return empty list if no valid content
+                try:
+                    full_response_dict = json.loads(response.json()) # For some SDK versions
+                except AttributeError: # If .json() doesn't exist
+                    try:
+                        full_response_dict = vars(response) # General fallback
+                    except TypeError: # If vars() is not applicable (e.g. for pydantic models directly)
+                        # This might be a scenario where response itself is already dict-like or needs specific handling
+                        # For now, we'll try to force it to a string and log a warning if it's not a dict
+                        print(f"Warning: Could not easily convert response to dict. Saving string representation for raw cache.")
+                        full_response_dict = {"raw_string_representation": str(response)}
+                except json.JSONDecodeError:
+                    print(f"Warning: response.json() did not return valid JSON. Trying vars() for raw cache.")
+                    full_response_dict = vars(response)
+            
+            # Save the raw API response
+            try:
+                with open(RAW_CACHE_FILE, 'w') as f:
+                    json.dump(full_response_dict, f, indent=2)
+                print(f"Saved raw API response for SearchAgent to: {RAW_CACHE_FILE}")
+            except Exception as e:
+                print(f"Error saving raw API response for SearchAgent to {RAW_CACHE_FILE}: {e}")
 
-            if not search_results:
-                 print("Warning: No content processed into search_results, though API call may have succeeded.")
-                 # Fallback to a generic entry if nothing specific was parsed but we got some content
-                 if main_content:
-                    search_results.append({"url": "https://perplexity.ai/search/unknown_source", "snippet": main_content})
+            search_results_data = []
+            
+            # Prioritize the structured "search_results" field if available
+            if "search_results" in full_response_dict and isinstance(full_response_dict.get("search_results"), list):
+                for item in full_response_dict["search_results"]:
+                    url = item.get("url")
+                    title = item.get("title", "No title provided")
+                    # Using title as snippet for now, as per PRD requirement for URL and snippet
+                    # Could also use a portion of message.content if more detail per source is needed
+                    # and can be mapped, but title is directly associated with the URL here.
+                    if url:
+                        search_results_data.append({"url": url, "snippet": title})
+                if search_results_data:
+                    print(f"Processed {len(search_results_data)} items from API's 'search_results' field.")
 
-            return search_results
+            # Fallback or augmentation: if no structured search_results, or if we also want the main content
+            # For now, the PRD implies distinct URL/snippet pairs, so structured search_results are preferred.
+            # If search_results_data is still empty, but we have main content, use that.
+            # Adjusting to use full_response_dict for consistency in accessing choices
+            choices = full_response_dict.get('choices', [])
+            if not search_results_data and choices and isinstance(choices, list) and len(choices) > 0 \
+               and isinstance(choices[0], dict) and choices[0].get('message') \
+               and isinstance(choices[0]['message'], dict) and choices[0]['message'].get('content'):
+                main_content = choices[0]['message']['content'].strip()
+                print("Warning: No structured 'search_results' found in API response or it was empty. Using main message content as a single snippet.")
+                search_results_data.append({
+                    "url": "https://perplexity.ai/summarized_result", # Placeholder for summarized content
+                    "snippet": main_content
+                })
+            elif not choices or not isinstance(choices, list) or len(choices) == 0 \
+                 or not isinstance(choices[0], dict) or not choices[0].get('message') \
+                 or not isinstance(choices[0]['message'], dict) or not choices[0]['message'].get('content'):
+                 print("Perplexity API did not return the expected content structure in choices.")
+                 return []
+
+            if not search_results_data:
+                print("Warning: Perplexity API call succeeded but no content was processed into search_results_data.")
+
+            if search_results_data: # Save to cache only if we have data
+                try:
+                    with open(CACHE_FILE, 'w') as f:
+                        json.dump(search_results_data, f, indent=2)
+                    print(f"Saved {len(search_results_data)} search results to cache: {CACHE_FILE}")
+                except Exception as e:
+                    print(f"Error saving search results to cache {CACHE_FILE}: {e}")
+
+            return search_results_data
 
         except Exception as e:
-            print(f"Error calling Perplexity API: {e}")
-            # In case of an API error, return an empty list or re-raise depending on desired handling
+            print(f"Error calling Perplexity API or processing its response: {e}")
+            # Ensure traceback is printed for better debugging of other potential errors
+            import traceback
+            traceback.print_exc()
             return [] 

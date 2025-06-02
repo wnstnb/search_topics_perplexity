@@ -1,6 +1,11 @@
 import google.generativeai as genai
 from config import GOOGLE_API_KEY
 import re # Import re module
+import os
+import json
+
+CACHE_FILE = "_cache_editor_linkedin_output.json"
+RAW_CACHE_FILE = "_cache_editor_agent_linkedin_raw_api_responses.txt" # Renamed for clarity
 
 class EditorAgent:
     def __init__(self):
@@ -11,12 +16,24 @@ class EditorAgent:
         print("EditorAgent initialized with Gemini 2.5 Pro")
         self.model = genai.GenerativeModel('gemini-2.5-pro-preview-05-06') # Using 1.5 pro as per PRD
 
-    def craft_posts(self, distilled_content: dict, app_name: str, app_description: str) -> list:
+    def craft_posts(self, distilled_content: dict, app_name: str, app_description: str, tuon_features_content: str) -> list:
         """
-        Takes curated topics and pain points and crafts engaging social media posts.
+        Takes curated topics and pain points and crafts engaging LinkedIn posts,
+        incorporating app features.
         """
-        print(f"Crafting posts for {app_name} based on distilled content.")
+        print(f"Crafting LinkedIn posts for {app_name} based on distilled content and features.")
+
+        if os.path.exists(CACHE_FILE):
+            try:
+                with open(CACHE_FILE, 'r') as f:
+                    cached_posts = json.load(f)
+                print(f"Loaded editor LinkedIn output from cache: {CACHE_FILE}")
+                return cached_posts
+            except Exception as e:
+                print(f"Error loading editor LinkedIn output from cache {CACHE_FILE}: {e}. Proceeding with generation.")
+
         social_media_posts = []
+        all_raw_api_responses = [] # Renamed from all_raw_mock_generations
 
         topics = distilled_content.get("distilled_topics", [])
         # talking_points = distilled_content.get("talking_points", []) # Not directly used in this mock, but available
@@ -28,65 +45,86 @@ class EditorAgent:
         for i, topic_text in enumerate(topics):
             # Constructing a prompt for Gemini Pro
             prompt_parts = [
-                f"You are an expert social media copywriter for {app_name}, which is '{app_description}'.",
-                f"Your task is to create engaging social media posts based on the following topic: '{topic_text}'.",
-                "Generate three variations of a social media post for this topic: one for Twitter (max 280 chars), one for LinkedIn (more professional), and one for Facebook (more conversational).",
-                "Ensure posts are engaging, concise, and include 2-3 relevant hashtags.",
-                "Maintain a consistent tone of voice that is knowledgeable, helpful, and slightly enthusiastic about how the app solves user problems.",
-                "Output the posts in a clear, structured format. For example:",
-                "**Twitter Post:**\\n[Your Twitter post text here including #hashtags]\\n\\n**LinkedIn Post:**\\n[Your LinkedIn post text here including #hashtags]\\n\\n**Facebook Post:**\\n[Your Facebook post text here including #hashtags]"
+                f"You are an expert LinkedIn copywriter for {app_name}. {app_name} is '{app_description}'.",
+                f"Here is a list of {app_name}'s key features that you can subtly reference if relevant:\n{tuon_features_content}\n",
+                f"Your task is to create one engaging and professional LinkedIn post based on the following topic: '{topic_text}'.",
+                "The post should be suitable for a LinkedIn audience (professional, insightful, and value-driven).",
+                f"Subtly weave in one or two relevant features of {app_name} that naturally align with the topic to showcase its benefits.",
+                "Ensure the post is engaging and highlights a problem that {app_name} solves. Do not use any hashtags.",
+                "Posts can be long or short. Hard character limit is 2000 characters.",
+                "Maintain a knowledgeable, helpful, and confident tone.",
+                "Output only the LinkedIn post text directly. For example:",
+                "[Your LinkedIn post text here, describing the topic and weaving in features of {app_name} that are relevant to the topic]"
             ]
             prompt = "\\n".join(prompt_parts)
             print(f"-- Editor Agent Prompt to Gemini (Topic {i+1}) --\\n{prompt[:500]}...\\n-- End of Prompt Snippet --")
 
-            # Mock response - made slightly different for the second topic
-            if i == 0:
-                generated_post_text = f"""
-                **Twitter Post:**
-                Topic 1: Struggling with note chaos? {app_name} uses AI to auto-organize & find notes instantly! ✨ #NoteTaking #AI #Productivity
+            generated_post_text = "" # Initialize
+            try:
+                api_response = self.model.generate_content(prompt)
+                # Extract text from API response
+                if not api_response.parts:
+                    print(f"Error: Received an empty API response from EditorAgent for topic {i+1}.")
+                    generated_post_text = "#Error: Empty API Response"
+                elif hasattr(api_response, 'text'):
+                    generated_post_text = api_response.text
+                else:
+                    generated_post_text = "".join(part.text for part in api_response.parts if hasattr(part, 'text'))
+                
+                if not generated_post_text:
+                    print(f"Error: API response content is empty for EditorAgent for topic {i+1}.")
+                    generated_post_text = "#Error: Empty API Response Content"
 
-                **LinkedIn Post:**
-                Topic 1: In today's fast-paced environment, effective note management is key. {app_name} leverages artificial intelligence to streamline your workflow. #DigitalTransformation #AIinBusiness
+            except Exception as e:
+                print(f"Error calling Gemini API for EditorAgent (Topic {i+1}): {e}")
+                generated_post_text = f"#Error: API Call Failed - {e}"
 
-                **Facebook Post:**
-                Topic 1: Tired of searching endlessly? 😫 {app_name}'s smart AI organizes your thoughts! #SmartNotes #GetOrganized
-                """
-            else:
-                generated_post_text = f"""
-                **Twitter Post:**
-                Topic 2: Overwhelmed by info? {app_name} summarizes long texts with AI! 🤯 #ProductivityBoost #AI #Summary
-
-                **LinkedIn Post:**
-                Topic 2: Combat information overload with {app_name}. Our AI-powered summarization helps you grasp key insights faster. #FutureOfWork #AISolutions
-
-                **Facebook Post:**
-                Topic 2: Drowning in information? 🌊 Let {app_name} AI give you the highlights! #AISummarizer #TechForGood
-                """
-            print(f"-- Editor Agent Mock Response (Topic {i+1}) --\\n{generated_post_text}\\n-- End of Mock Response --")
+            print(f"-- Editor Agent API Response (Topic {i+1}) --\\n{generated_post_text[:300]}...\\n-- End of API Response Snippet --")
             
-            current_posts = {
+            all_raw_api_responses.append(f"--- Raw API Response for LinkedIn Post (Topic {i+1}: {topic_text}) ---\n{generated_post_text}\n")
+
+            # Remove parsing for multiple variations
+            # The generated_post_text is now assumed to be the single post
+            single_post_content = generated_post_text.strip()
+            if generated_post_text.startswith("#Error"):
+                single_post_content = generated_post_text.strip() # Keep error message
+            elif not single_post_content: # Handle case where API returns empty but not error state
+                print(f"Warning: Received empty content (after stripping) for topic {i+1}, but no explicit error. Storing as empty.")
+                single_post_content = "" 
+
+            current_posts_data = { 
                 "topic": topic_text,
-                "twitter": "",
-                "linkedin": "",
-                "facebook": ""
+                "linkedin_post": single_post_content # Changed from linkedin_posts list to single string
             }
 
-            # More robust regex to capture content for each platform
-            # Looks for a platform title and captures text until the *next* platform title or end of string
-            # (?s) or re.DOTALL makes . match newlines.
-            # The lookahead (?!\*\*\w+ Post:\*\*) ensures it stops before any other platform marker.
+            # Regex parsing might not be strictly needed if the LLM follows the new prompt structure well,
+            # but we can keep a simple extraction for robustness or if the LLM adds minor artifacts.
+            # For now, we assume generated_post_text IS the post due to the new prompt.
+            # If LLM includes "**LinkedIn Post:**", we might want to strip it, but the prompt asks for direct text.
             
-            twitter_match = re.search(r"\*\*Twitter Post:\*\*\s*(.*?)(?=\s*\*\*(?:LinkedIn|Facebook) Post:\*\*|$)", generated_post_text, re.DOTALL)
-            linkedin_match = re.search(r"\*\*LinkedIn Post:\*\*\s*(.*?)(?=\s*\*\*(?:Twitter|Facebook) Post:\*\*|$)", generated_post_text, re.DOTALL)
-            facebook_match = re.search(r"\*\*Facebook Post:\*\*\s*(.*?)(?=\s*\*\*(?:Twitter|LinkedIn) Post:\*\*|$)", generated_post_text, re.DOTALL)
+            # Example of a simple strip if the model *still* adds a prefix despite instructions:
+            # prefix_to_strip = "**LinkedIn Post:**"
+            # if generated_post_text.strip().startswith(prefix_to_strip):
+            #    current_posts["linkedin_post"] = generated_post_text.strip()[len(prefix_to_strip):].strip()
 
-            if twitter_match:
-                current_posts["twitter"] = twitter_match.group(1).strip()
-            if linkedin_match:
-                current_posts["linkedin"] = linkedin_match.group(1).strip()
-            if facebook_match:
-                current_posts["facebook"] = facebook_match.group(1).strip()
+            social_media_posts.append(current_posts_data) # Use renamed variable
 
-            social_media_posts.append(current_posts)
+        # Save to cache
+        if social_media_posts:
+            try:
+                with open(CACHE_FILE, 'w') as f:
+                    json.dump(social_media_posts, f, indent=2)
+                print(f"Saved editor LinkedIn output to cache: {CACHE_FILE}")
+            except Exception as e:
+                print(f"Error saving editor LinkedIn output to cache {CACHE_FILE}: {e}")
+        
+        # Save all raw API responses to a single file
+        if all_raw_api_responses:
+            try:
+                with open(RAW_CACHE_FILE, 'w') as f:
+                    f.write("\n".join(all_raw_api_responses))
+                print(f"Saved all raw API responses for EditorAgent to: {RAW_CACHE_FILE}")
+            except Exception as e:
+                print(f"Error saving raw API responses for EditorAgent to {RAW_CACHE_FILE}: {e}")
 
         return social_media_posts 

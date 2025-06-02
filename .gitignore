@@ -88,3 +88,9 @@ node_modules/
 # Task files
 tasks.json
 tasks/ 
+_cache_editor_agent_linkedin_raw_api_responses.txt
+_cache_editor_linkedin_output.json
+_cache_reviewer_agent_raw_api_response.txt
+_cache_reviewer_output.json
+_cache_search_agent_raw_api_response.json
+_cache_search_results.json

@@ -2,6 +2,7 @@ from agents.search_agent import SearchAgent
 from agents.reviewer_agent import ReviewerAgent
 from agents.editor_agent import EditorAgent
 import json
+import os # Added for reading features file
 
 def main():
     print("Starting AI-Powered Social Media Content Generation...")
@@ -17,6 +18,17 @@ def main():
     print(f"Initial Topic: {initial_topic}")
     print(f"App Name: {app_name}")
     print(f"App Description: {app_description}")
+
+    # Read Tuon.io features
+    tuon_features_content = ""
+    try:
+        with open("tuon_features.md", "r") as f:
+            tuon_features_content = f.read()
+        print("Successfully loaded Tuon.io features.")
+    except FileNotFoundError:
+        print("Warning: tuon_features.md not found. EditorAgent may not include specific features.")
+    except Exception as e:
+        print(f"Error reading tuon_features.md: {e}")
 
     try:
         # --- 2. Initialize Agents --- 
@@ -40,7 +52,7 @@ def main():
         # --- 4. Reviewer Agent Workflow --- 
         print("\n--- Stage 2: Reviewer Agent --- ")
         # As per PRD 5.3. Reviewer Agent processes search results.
-        distilled_content = reviewer_agent.review_and_distill(search_results, app_name, app_description)
+        distilled_content = reviewer_agent.review_and_distill(search_results, app_name, app_description, tuon_features_content)
         if not distilled_content or not distilled_content.get("distilled_topics"):
             print("Reviewer Agent did not produce distilled content. Exiting.")
             return
@@ -48,21 +60,23 @@ def main():
         print(json.dumps(distilled_content, indent=2))
 
         # --- 5. Editor Agent Workflow --- 
-        print("\n--- Stage 3: Editor Agent --- ")
+        print("\n--- Stage 3: Editor Agent (LinkedIn Posts) --- ")
         # As per PRD 5.4. Editor Agent crafts posts.
-        social_media_posts = editor_agent.craft_posts(distilled_content, app_name, app_description)
+        social_media_posts = editor_agent.craft_posts(distilled_content, app_name, app_description, tuon_features_content)
         if not social_media_posts:
-            print("Editor Agent did not generate any posts. Exiting.")
+            print("Editor Agent did not generate any LinkedIn posts. Exiting.")
             return
         
         # --- 6. Output --- 
         # As per PRD 5.5. Output a set of social media posts.
-        print("\n--- Generated Social Media Posts (mocked) --- ")
-        for i, post_set in enumerate(social_media_posts):
-            print(f"\n--- Post Set {i+1} (based on topic: \"{post_set['topic']}\") ---")
-            print(f"  Twitter:\n    {post_set['twitter'].replace('\n', '\n    ')}")
-            print(f"  LinkedIn:\n    {post_set['linkedin'].replace('\n', '\n    ')}")
-            print(f"  Facebook:\n    {post_set['facebook'].replace('\n', '\n    ')}")
+        print("\n--- Generated LinkedIn Posts --- ")
+        for i, topic_post_data in enumerate(social_media_posts):
+            print(f"\n--- LinkedIn Post for Topic {i+1}: \"{topic_post_data.get('topic', 'N/A')}\" ---")
+            linkedin_post = topic_post_data.get('linkedin_post', '#Error: Post not found')
+            if linkedin_post.startswith("#Error") or not linkedin_post.strip():
+                print(f"    {linkedin_post}")
+            else:
+                print(f"    {linkedin_post.replace('\n', '\n    ')}")
 
         print("\nAI-Powered Social Media Content Generation complete.")
 
