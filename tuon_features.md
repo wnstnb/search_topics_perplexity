@@ -17,6 +17,12 @@ This document highlights the key features of our content creation and management
 
 *   **Automatic Title Suggestions:** Let our AI help you craft engaging and relevant titles for your articles and documents.
 *   **Instant Document Summaries:** Get the gist of long documents in seconds with AI-powered summarization.
+*   **PDF Processing & Analysis:** Extract and summarize information from PDF documents with ease. Upload files directly or provide URLs to PDF documents for instant processing and analysis.
+*   **Web Content Capture:** Save web pages for later reading with our "pocket" functionality. Get quick summaries of web content or extract all information into organized, searchable notes.
+*   **Voice Summary & Transcription:** Real-time audio transcription with intelligent processing options:
+    *   Generate structured meeting notes and outlines from live audio
+    *   Create refined, polished transcripts of conversations and presentations
+    *   Live listening capabilities for immediate content capture
 *   **AI-Enhanced Search (Implied):** The system can create special "embeddings" from your content, which helps in making search results more relevant and intelligent.
 *   **Built-in Chat & Collaboration:**
     *   Communicate and collaborate directly within the platform using the integrated chat feature.
