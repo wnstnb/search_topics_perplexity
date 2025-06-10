@@ -1,6 +1,7 @@
 from agents.search_agent import SearchAgent
 from agents.reviewer_agent import ReviewerAgent
 from agents.editor_agent import EditorAgent
+from agents.twitter_agent import TwitterAgent
 import json
 import os # Added for reading features file
 
@@ -19,8 +20,13 @@ def main():
     print(f"App Name: {app_name}")
     print(f"App Description: {app_description}")
 
+    # --- Control Flags for Agent Execution ---
+    RUN_SEARCH_AGENT = True  # Set to False to skip Perplexity search
+    RUN_TWITTER_AGENT = True # Set to False to skip Twitter search
+
     # Read Tuon.io features
     tuon_features_content = ""
+    twitter_query = "AI in notes"
     try:
         with open("tuon_features.md", "r") as f:
             tuon_features_content = f.read()
@@ -36,23 +42,63 @@ def main():
         search_agent = SearchAgent()
         reviewer_agent = ReviewerAgent()
         editor_agent = EditorAgent()
+        twitter_agent = TwitterAgent()
         print("All agents initialized successfully.")
 
+        # Initialize results lists to ensure they are always defined
+        search_results = []
+        tweet_results = []
+
         # --- 3. Search Agent Workflow --- 
-        print("\n--- Stage 1: Search Agent --- ")
-        # As per PRD 5.2. Search Agent queries Perplexity.
-        search_results = search_agent.search(initial_topic)
-        if not search_results:
-            print("Search Agent did not return any results. Exiting.")
+        if RUN_SEARCH_AGENT:
+            print("\n--- Stage 1a: Search Agent (Perplexity) --- ")
+            _temp_search_results = search_agent.search(initial_topic)
+            if _temp_search_results:
+                search_results = _temp_search_results
+                print(f"Search Agent found {len(search_results)} results:")
+                for i, res in enumerate(search_results):
+                    print(f"  {i+1}. URL: {res['url']}, Snippet: {res['snippet'][:60]}...")
+            else:
+                print("Search Agent (Perplexity) did not return any results.")
+        else:
+            print("\n--- Stage 1a: Search Agent (Perplexity) - SKIPPED ---")
+
+        # --- 3b. Twitter Agent Workflow --- 
+        if RUN_TWITTER_AGENT:
+            print("\n--- Stage 1b: Twitter Agent --- ")
+            _temp_tweet_results = twitter_agent.search_tweets(twitter_query)
+            if _temp_tweet_results:
+                tweet_results = _temp_tweet_results
+                print(f"Twitter Agent found {len(tweet_results)} tweets for query '{twitter_query}':")
+                for i, res in enumerate(tweet_results):
+                    print(f"  {i+1}. URL: {res['url']}, Snippet: {res['snippet'][:60]}...")
+            else:
+                print(f"Twitter Agent did not return any results for query '{twitter_query}'.")
+        else:
+            print("\n--- Stage 1b: Twitter Agent - SKIPPED ---")
+        
+        # Combine results based on which agents were run
+        if RUN_SEARCH_AGENT and RUN_TWITTER_AGENT:
+            combined_search_results = search_results + tweet_results
+            print(f"\nCombined {len(search_results)} Perplexity results and {len(tweet_results)} Twitter results.")
+        elif RUN_SEARCH_AGENT:
+            combined_search_results = search_results
+            print(f"\nUsing {len(search_results)} Perplexity results only.")
+        elif RUN_TWITTER_AGENT:
+            combined_search_results = tweet_results
+            print(f"\nUsing {len(tweet_results)} Twitter results only.")
+        else:
+            combined_search_results = []
+            print("\nBoth Perplexity and Twitter searches were skipped.")
+
+        if not combined_search_results:
+            print("No search results gathered from any agent. Exiting.")
             return
-        print(f"Search Agent found {len(search_results)} results (mocked):")
-        for i, res in enumerate(search_results):
-            print(f"  {i+1}. URL: {res['url']}, Snippet: {res['snippet'][:60]}...")
 
         # --- 4. Reviewer Agent Workflow --- 
         print("\n--- Stage 2: Reviewer Agent --- ")
         # As per PRD 5.3. Reviewer Agent processes search results.
-        distilled_content = reviewer_agent.review_and_distill(search_results, app_name, app_description, tuon_features_content)
+        distilled_content = reviewer_agent.review_and_distill(combined_search_results, app_name, app_description, tuon_features_content)
         if not distilled_content or not distilled_content.get("distilled_topics"):
             print("Reviewer Agent did not produce distilled content. Exiting.")
             return

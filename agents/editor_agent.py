@@ -47,14 +47,15 @@ class EditorAgent:
             prompt_parts = [
                 f"You are an expert LinkedIn copywriter for {app_name}. {app_name} is '{app_description}'.",
                 f"Here is a list of {app_name}'s key features that you can subtly reference if relevant:\n{tuon_features_content}\n",
-                f"Your task is to create one engaging and professional LinkedIn post based on the following topic: '{topic_text}'.",
-                "The post should be suitable for a LinkedIn audience (professional, insightful, and value-driven).",
-                f"Subtly weave in one or two relevant features of {app_name} that naturally align with the topic to showcase its benefits.",
-                "Ensure the post is engaging and highlights a problem that {app_name} solves. Do not use any hashtags.",
+                f"Your task is to create an engaging and professional LinkedIn post based on the following topic: '{topic_text}'.",
+                "Use storytelling formats such as problem-solution arcs, user mini-journeys, or metaphor-based framing.",
+                "Begin by identifying a common frustration or challenge professionals face.",
+                "Illustrate how a feature (or more) of {app_name} naturally resolves or reframes the issue.",
+                "Avoid listing features—show their value through action, outcome, or user benefit.",
+                "End with an insightful takeaway or reflection relevant to the reader's own workflow or mindset.",
+                "Maintain a knowledgeable, helpful, and confident tone. No hashtags.",
                 "Posts can be long or short. Hard character limit is 2000 characters.",
-                "Maintain a knowledgeable, helpful, and confident tone.",
-                "Output only the LinkedIn post text directly. For example:",
-                "[Your LinkedIn post text here, describing the topic and weaving in features of {app_name} that are relevant to the topic]"
+                "Output only the LinkedIn post text. Do not include any headings or labels."
             ]
             prompt = "\\n".join(prompt_parts)
             print(f"-- Editor Agent Prompt to Gemini (Topic {i+1}) --\\n{prompt[:500]}...\\n-- End of Prompt Snippet --")

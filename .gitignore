@@ -1,3 +1,4 @@
+.agents/old_responses
 .cursor
 .roo
 .env
@@ -94,3 +95,5 @@ _cache_reviewer_agent_raw_api_response.txt
 _cache_reviewer_output.json
 _cache_search_agent_raw_api_response.json
 _cache_search_results.json
+_cache_twitter_results.json
+_cache_twitter_agent_raw_api_response.json
