@@ -1,5 +1,7 @@
 # Core libraries
 python-dotenv
+cryptography>=41.0.0
+pathlib
 # AI SDKs
 openai # Placeholder, will be replaced by perplexity and google sdks
 google-generativeai

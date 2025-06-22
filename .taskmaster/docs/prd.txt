@@ -1,0 +1,125 @@
+# Typefully API Integration PRD
+
+## Project Overview
+Integrate Typefully API into the search_topics_perplexity project to enable automated Twitter/X content publishing and management. This integration will allow the system to programmatically create, schedule, and monitor social media content through Typefully's robust API.
+
+## Core Objectives
+- Enable automated social media content publishing
+- Provide scheduling capabilities for optimal posting times
+- Monitor published content performance and engagement
+- Integrate seamlessly with existing agent architecture
+- Maintain compliance with X automation rules
+
+## Functional Requirements
+
+### 1. Authentication System
+- Implement secure API key management for Typefully authentication
+- Support multiple Twitter/X accounts through account switching
+- Handle API key rotation and validation
+- Store credentials securely using environment variables
+
+### 2. Draft Creation & Management
+- Create drafts programmatically from generated content
+- Support thread creation with automatic content splitting
+- Enable manual thread formatting using 4 consecutive newlines
+- Implement threadify feature for automatic tweet splitting
+- Handle rich text formatting and media attachments
+
+### 3. Scheduling System
+- Schedule drafts for specific dates and times (ISO format)
+- Implement "next-free-slot" scheduling for optimal timing
+- Support bulk scheduling operations
+- Handle timezone conversions and scheduling conflicts
+- Provide scheduling validation and error handling
+
+### 4. Content Monitoring
+- Retrieve recently scheduled drafts
+- Fetch recently published content
+- Monitor notifications (replies, comments, engagement)
+- Track auto-retweet and auto-plug performance
+- Generate publishing success/failure reports
+
+### 5. Advanced Features
+- Auto-retweet functionality for content amplification
+- Auto-plug integration for consistent branding
+- Content filtering and categorization
+- Draft sharing capabilities with share URLs
+- Notification management and read status tracking
+
+## Technical Requirements
+
+### API Integration Specifications
+- Base URL: https://api.typefully.com/v1
+- Authentication: X-API-KEY header with Bearer token
+- Rate limiting compliance and retry logic
+- Error handling with detailed logging
+- Response validation and data sanitization
+
+### Endpoints to Implement
+1. POST /v1/drafts/ - Create drafts
+2. GET /v1/drafts/recently-scheduled/ - Fetch scheduled content
+3. GET /v1/drafts/recently-published/ - Fetch published content
+4. GET /v1/notifications/ - Monitor notifications
+5. POST /v1/notifications/mark-all-read/ - Manage notifications
+
+### Integration Points
+- Extend existing agents (search_agent.py, twitter_agent.py)
+- Add new typefully_agent.py for dedicated API handling
+- Update config.py for API configuration management
+- Integrate with main.py workflow orchestration
+
+### Data Models
+- Draft model with content, scheduling, and metadata
+- Notification model for engagement tracking
+- Account model for multi-account management
+- Publishing result model for success/failure tracking
+
+## Non-Functional Requirements
+
+### Performance
+- API response time < 2 seconds for standard operations
+- Support for concurrent draft creation (up to 10 simultaneous)
+- Efficient content batching for bulk operations
+- Memory-efficient handling of large content volumes
+
+### Reliability
+- 99.5% uptime for API integrations
+- Automatic retry logic with exponential backoff
+- Graceful degradation when API is unavailable
+- Comprehensive error logging and monitoring
+
+### Security
+- Secure API key storage and transmission
+- Input validation for all content and parameters
+- Protection against content injection attacks
+- Audit logging for all API operations
+
+### Compliance
+- Adherence to X automation rules and guidelines
+- Rate limiting to prevent account suspension
+- Content validation for policy compliance
+- Proper attribution and disclosure for automated content
+
+## Success Metrics
+- Successful integration with < 5% API error rate
+- Automated publishing accuracy > 98%
+- Average scheduling latency < 30 seconds
+- User satisfaction rating > 4.5/5 for automation features
+
+## Dependencies
+- Existing project structure (agents/, config.py, utils.py)
+- Python requests library for HTTP operations
+- Environment variable management system
+- Logging framework for operation tracking
+
+## Constraints
+- Must maintain compatibility with existing codebase
+- Follow X platform automation guidelines
+- Respect Typefully API rate limits
+- Minimize external dependencies
+
+## Risks & Mitigation
+- API rate limiting: Implement intelligent queuing system
+- Account suspension: Strict compliance with automation rules
+- API changes: Version management and backward compatibility
+- Content quality: Validation and review processes 
