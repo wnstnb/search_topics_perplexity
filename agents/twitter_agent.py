@@ -22,9 +22,16 @@ class TwitterAgent:
         # Check database cache first
         if session_id and self.db.has_twitter_results(session_id):
             cached_results = self.db.get_twitter_results(session_id)
-            print(f"Loaded {len(cached_results)} tweet results from database for session {session_id}")
+            print(f"💾 CACHE HIT: Loaded {len(cached_results)} tweet results from database for session {session_id}")
+            print(f"   🚀 Skipping API call - using cached data")
             # Convert database results to expected format
             return [dict(result) for result in cached_results]
+        
+        if session_id:
+            print(f"💿 CACHE MISS: No cached twitter results found for session {session_id}")
+            print(f"   🌐 Making API call to RapidAPI...")
+        else:
+            print(f"❌ NO SESSION ID: Cannot use caching, making API call to RapidAPI...")
 
         headers = {
             'x-rapidapi-key': self.api_key,

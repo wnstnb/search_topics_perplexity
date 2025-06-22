@@ -26,9 +26,16 @@ class EditorAgent:
         # Check database cache first
         if session_id and self.db.has_editor_outputs(session_id):
             cached_posts = self.db.get_editor_outputs(session_id)
-            print(f"Loaded editor LinkedIn output from database for session {session_id}")
+            print(f"💾 CACHE HIT: Loaded editor LinkedIn output from database for session {session_id}")
+            print(f"   🚀 Skipping API call - using cached data")
             # Convert database results to expected format
             return [dict(post) for post in cached_posts]
+        
+        if session_id:
+            print(f"💿 CACHE MISS: No cached editor outputs found for session {session_id}")
+            print(f"   🌐 Making API calls to Gemini...")
+        else:
+            print(f"❌ NO SESSION ID: Cannot use caching, making API calls to Gemini...")
 
         social_media_posts = []
         all_raw_api_responses = [] # Renamed from all_raw_mock_generations

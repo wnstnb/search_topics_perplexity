@@ -25,6 +25,10 @@ def main():
     # --- Control Flags for Agent Execution ---
     RUN_SEARCH_AGENT = True  # Set to False to skip Perplexity search
     RUN_TWITTER_AGENT = True # Set to False to skip Twitter search
+    
+    # --- Debugging/Caching Control ---
+    USE_EXISTING_SESSION = True  # Set to True to reuse latest session (for caching), False to create new session
+    FORCE_NEW_SESSION = False    # Set to True to always create new session (overrides USE_EXISTING_SESSION)
 
     # Read Tuon.io features
     tuon_features_content = ""
@@ -39,17 +43,57 @@ def main():
         print(f"Error reading tuon_features.md: {e}")
 
     try:
-        # --- 2. Initialize Database and Create Session --- 
-        print("\n--- Initializing Database and Creating Session ---")
+        # --- 2. Initialize Database and Session Management --- 
+        print("\n--- Initializing Database and Session Management ---")
         db = DatabaseHandler()
-        session_name = f"Content Generation - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        session_id = db.create_session(
-            session_name=session_name,
-            topic=initial_topic,
-            app_name=app_name,
-            app_description=app_description
-        )
-        print(f"Created session '{session_name}' with ID: {session_id}")
+        
+        # Determine session strategy
+        if FORCE_NEW_SESSION:
+            # Always create new session
+            session_name = f"Content Generation - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            session_id = db.create_session(
+                session_name=session_name,
+                topic=initial_topic,
+                app_name=app_name,
+                app_description=app_description
+            )
+            print(f"🆕 Created NEW session '{session_name}' with ID: {session_id}")
+            
+        elif USE_EXISTING_SESSION:
+            # Try to reuse existing session, create new if none exists
+            existing_session_id = db.get_latest_session_id()
+            if existing_session_id:
+                session_id = existing_session_id
+                sessions = db.get_sessions()
+                latest_session = sessions[0] if sessions else None
+                if latest_session:
+                    print(f"♻️  REUSING existing session '{latest_session['session_name']}' with ID: {session_id}")
+                    print(f"   Original topic: {latest_session.get('topic', 'N/A')}")
+                    print(f"   Created: {latest_session.get('created_at', 'N/A')}")
+                    print(f"   📋 This enables CACHING - agents will use previously stored data if available")
+                else:
+                    session_id = existing_session_id
+                    print(f"♻️  REUSING session ID: {session_id} (metadata not available)")
+            else:
+                # No existing sessions, create new one
+                session_name = f"Content Generation - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                session_id = db.create_session(
+                    session_name=session_name,
+                    topic=initial_topic,
+                    app_name=app_name,
+                    app_description=app_description
+                )
+                print(f"🆕 No existing sessions found. Created NEW session '{session_name}' with ID: {session_id}")
+        else:
+            # Create new session (original behavior)
+            session_name = f"Content Generation - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            session_id = db.create_session(
+                session_name=session_name,
+                topic=initial_topic,
+                app_name=app_name,
+                app_description=app_description
+            )
+            print(f"🆕 Created NEW session '{session_name}' with ID: {session_id}")
         
         # --- 3. Initialize Agents --- 
         print("\n--- Initializing Agents ---")

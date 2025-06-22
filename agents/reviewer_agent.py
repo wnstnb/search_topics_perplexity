@@ -26,8 +26,15 @@ class ReviewerAgent:
         # Check database cache first
         if session_id and self.db.has_reviewer_output(session_id):
             cached_output = self.db.get_reviewer_output(session_id)
-            print(f"Loaded reviewer output from database for session {session_id}")
+            print(f"💾 CACHE HIT: Loaded reviewer output from database for session {session_id}")
+            print(f"   🚀 Skipping API call - using cached data")
             return cached_output
+        
+        if session_id:
+            print(f"💿 CACHE MISS: No cached reviewer output found for session {session_id}")
+            print(f"   🌐 Making API call to Gemini...")
+        else:
+            print(f"❌ NO SESSION ID: Cannot use caching, making API call to Gemini...")
         
         # Constructing a prompt for Gemini
         prompt_parts = [

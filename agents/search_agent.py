@@ -25,9 +25,16 @@ class SearchAgent:
         # Check database cache first
         if session_id and self.db.has_search_results(session_id):
             cached_results = self.db.get_search_results(session_id)
-            print(f"Loaded {len(cached_results)} search results from database for session {session_id}")
+            print(f"💾 CACHE HIT: Loaded {len(cached_results)} search results from database for session {session_id}")
+            print(f"   🚀 Skipping API call - using cached data")
             # Convert database results to expected format
             return [{"url": result.get("url"), "snippet": result.get("snippet")} for result in cached_results]
+        
+        if session_id:
+            print(f"💿 CACHE MISS: No cached search results found for session {session_id}")
+            print(f"   🌐 Making API call to Perplexity...")
+        else:
+            print(f"❌ NO SESSION ID: Cannot use caching, making API call to Perplexity...")
 
         messages = [
             {
