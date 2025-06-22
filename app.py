@@ -1,18 +1,49 @@
 import streamlit as st
 import json
 from datetime import datetime
+from database import DatabaseHandler
 # import streamlit.components.v1 as components # No longer needed
 from st_copy_to_clipboard import st_copy_to_clipboard # Import the component
 
 # Page config MUST be the first Streamlit command
 st.set_page_config(layout="wide", page_title="Social Media Dashboard")
 
+# Initialize database
+db = DatabaseHandler()
+
 # Initialize session state for navigation
 if 'current_page' not in st.session_state:
     st.session_state.current_page = "LinkedIn Posts"
+if 'selected_session_id' not in st.session_state:
+    st.session_state.selected_session_id = None
 
 # Sidebar for navigation with buttons
 st.sidebar.title("Navigation")
+
+# Session selection
+sessions = db.get_sessions()
+if sessions:
+    session_options = {f"{session['session_name']} ({session['created_at']})": session['id'] 
+                      for session in sessions}
+    selected_session_name = st.sidebar.selectbox(
+        "Select Session:", 
+        options=list(session_options.keys()),
+        index=0
+    )
+    st.session_state.selected_session_id = session_options[selected_session_name]
+    
+    # Display session info
+    selected_session = next((s for s in sessions if s['id'] == st.session_state.selected_session_id), None)
+    if selected_session:
+        st.sidebar.markdown(f"**Topic:** {selected_session.get('topic', 'N/A')}")
+        st.sidebar.markdown(f"**App:** {selected_session.get('app_name', 'N/A')}")
+else:
+    st.sidebar.warning("No sessions found. Run main.py to generate content first.")
+    st.session_state.selected_session_id = None
+
+st.sidebar.markdown("---")
+
+# Navigation buttons
 if st.sidebar.button("LinkedIn Posts", use_container_width=True):
     st.session_state.current_page = "LinkedIn Posts"
 if st.sidebar.button("Twitter Results", use_container_width=True):
@@ -23,28 +54,21 @@ if st.sidebar.button("Talking Points", use_container_width=True):
     st.session_state.current_page = "Talking Points"
 
 page = st.session_state.current_page
+selected_session_id = st.session_state.selected_session_id
 
 if page == "LinkedIn Posts":
-    # Load the LinkedIn data
-    try:
-        # Ensure the path to the JSON file is correct.
-        # If app.py is in the root of your project, and the JSON file is also in the root,
-        # then '_cache_editor_linkedin_output.json' is correct.
-        # If app.py is in a subdirectory, you might need to adjust the path, e.g., '../_cache_editor_linkedin_output.json'
-        with open('_cache_editor_linkedin_output.json', 'r') as f:
-            data = json.load(f)
-    except FileNotFoundError:
-        st.error("Error: '_cache_editor_linkedin_output.json' not found. Please ensure the file exists and the path is correct relative to 'app.py'.")
-        st.stop()
-    except json.JSONDecodeError:
-        st.error("Error: Could not decode JSON from '_cache_editor_linkedin_output.json'. Please check the file format.")
-        st.stop()
-
     st.title("LinkedIn Post Suggestions Dashboard")
-    st.markdown("Displaying topics and generated LinkedIn posts from `_cache_editor_linkedin_output.json`")
+    st.markdown("Displaying topics and generated LinkedIn posts from database")
 
+    if not selected_session_id:
+        st.warning("Please select a session from the sidebar.")
+        st.stop()
+
+    # Load the LinkedIn data from database
+    data = db.get_editor_outputs(selected_session_id) if selected_session_id else []
+    
     if not data:
-        st.warning("No data found in the JSON file.")
+        st.warning("No LinkedIn posts found for this session.")
     else:
         # Using columns for a more structured layout
         num_columns = 2 # You can adjust the number of columns
@@ -67,19 +91,15 @@ if page == "LinkedIn Posts":
                 st.markdown("---") # Visual separator for each item within a column 
 
 elif page == "Twitter Results":
-    # Load the Twitter data
-    try:
-        with open('_cache_twitter_results.json', 'r') as f:
-            twitter_data = json.load(f)
-    except FileNotFoundError:
-        st.error("Error: '_cache_twitter_results.json' not found. Please ensure the file exists and the path is correct relative to 'app.py'.")
-        st.stop()
-    except json.JSONDecodeError:
-        st.error("Error: Could not decode JSON from '_cache_twitter_results.json'. Please check the file format.")
-        st.stop()
-
     st.title("Twitter Search Results")
     st.markdown("Browse through Twitter posts related to your search queries")
+    
+    if not selected_session_id:
+        st.warning("Please select a session from the sidebar.")
+        st.stop()
+
+    # Load the Twitter data from database
+    twitter_data = db.get_twitter_results(selected_session_id) if selected_session_id else []
     
     # Add filters
     col1, col2, col3 = st.columns(3)
@@ -169,119 +189,66 @@ elif page == "Twitter Results":
                 st.markdown("---") 
 
 elif page == "Search Research":
-    # Load the Search Agent data
-    try:
-        with open('_cache_search_agent_raw_api_response.json', 'r') as f:
-            search_data = json.load(f)
-    except FileNotFoundError:
-        st.error("Error: '_cache_search_agent_raw_api_response.json' not found. Please ensure the file exists and the path is correct relative to 'app.py'.")
-        st.stop()
-    except json.JSONDecodeError:
-        st.error("Error: Could not decode JSON from '_cache_search_agent_raw_api_response.json'. Please check the file format.")
-        st.stop()
-
     st.title("Search Research Results")
     st.markdown("AI-generated research content with citations and sources")
     
-    if not search_data:
-        st.warning("No search data found in the JSON file.")
+    if not selected_session_id:
+        st.warning("Please select a session from the sidebar.")
+        st.stop()
+
+    # Load the Search Agent data from database
+    search_results = db.get_search_results(selected_session_id) if selected_session_id else []
+    
+    if not search_results:
+        st.warning("No search results found for this session.")
     else:
-        # Extract the main content
-        choices = search_data.get('choices', [])
-        if choices:
-            message = choices[0].get('message', {})
-            content = message.get('content', '')
-            
-            # Display main content
-            st.markdown("## Research Content")
-            if content:
-                st.markdown(content)
+        st.markdown("## Search Results")
+        st.write(f"Found {len(search_results)} search results")
+        
+        for i, result in enumerate(search_results):
+            with st.container():
+                col1, col2 = st.columns([3, 1])
                 
-                # Copy button for the entire content
-                st_copy_to_clipboard(content, key="research_content_copy")
-            else:
-                st.warning("No content found in the response.")
-            
-            st.markdown("---")
-            
-            # Display citations
-            citations = search_data.get('citations', [])
-            if citations:
-                st.markdown("## Citations")
-                for i, citation in enumerate(citations, 1):
-                    st.markdown(f"{i}. [{citation}]({citation})")
-            
-            st.markdown("---")
-            
-            # Display search results with more detail
-            search_results = search_data.get('search_results', [])
-            if search_results:
-                st.markdown("## Source Articles")
-                
-                for i, result in enumerate(search_results):
-                    with st.container():
-                        col1, col2 = st.columns([3, 1])
-                        
-                        with col1:
-                            title = result.get('title', 'No title')
-                            url = result.get('url', '')
-                            if url:
-                                st.markdown(f"**[{title}]({url})**")
-                            else:
-                                st.markdown(f"**{title}**")
-                        
-                        with col2:
-                            date = result.get('date', 'No date')
-                            if date:
-                                try:
-                                    # Try to parse and format the date
-                                    dt = datetime.strptime(date, "%Y-%m-%d")
-                                    formatted_date = dt.strftime("%b %d, %Y")
-                                    st.write(f"📅 {formatted_date}")
-                                except:
-                                    st.write(f"📅 {date}")
-                            else:
-                                st.write("📅 No date")
-                        
-                        # Copy button for the URL
-                        if url:
-                            st_copy_to_clipboard(url, key=f"search_url_copy_{i}")
-                        
-                        st.markdown("---")
-            
-            # Display usage information
-            usage = search_data.get('usage', {})
-            if usage:
-                st.markdown("## API Usage")
-                col1, col2, col3, col4 = st.columns(4)
                 with col1:
-                    st.metric("Completion Tokens", usage.get('completion_tokens', 0))
+                    url = result.get('url', '')
+                    snippet = result.get('snippet', 'No content available')
+                    if url:
+                        st.markdown(f"**[{url}]({url})**")
+                    else:
+                        st.markdown("**No URL**")
+                    
+                    st.markdown(f"*{snippet}*")
+                
                 with col2:
-                    st.metric("Prompt Tokens", usage.get('prompt_tokens', 0))
-                with col3:
-                    st.metric("Total Tokens", usage.get('total_tokens', 0))
-                with col4:
-                    st.metric("Search Context", usage.get('search_context_size', 'N/A'))
-            else:
-                st.warning("No response choices found in the data.")
+                    created_at = result.get('created_at', '')
+                    if created_at:
+                        st.write(f"📅 {created_at}")
+                    else:
+                        st.write("📅 No date")
+                
+                # Copy button for the snippet
+                if snippet:
+                    st_copy_to_clipboard(snippet, key=f"search_snippet_copy_{i}")
+                
+                # Copy button for the URL
+                if url:
+                    st_copy_to_clipboard(url, key=f"search_url_copy_{i}")
+                
+                st.markdown("---")
 
 elif page == "Talking Points":
-    # Load the Reviewer Output data
-    try:
-        with open('_cache_reviewer_output.json', 'r') as f:
-            reviewer_data = json.load(f)
-    except FileNotFoundError:
-        st.error("Error: '_cache_reviewer_output.json' not found. Please ensure the file exists and the path is correct relative to 'app.py'.")
-        st.stop()
-    except json.JSONDecodeError:
-        st.error("Error: Could not decode JSON from '_cache_reviewer_output.json'. Please check the file format.")
-        st.stop()
-
     st.title("Marketing Talking Points")
     st.markdown("Distilled topics and key talking points for Tuon.io based on market research")
     
-    if not reviewer_data:
-        st.warning("No reviewer data found in the JSON file.")
+    if not selected_session_id:
+        st.warning("Please select a session from the sidebar.")
+        st.stop()
+
+    # Load the Reviewer Output data from database
+    reviewer_data = db.get_reviewer_output(selected_session_id) if selected_session_id else {"distilled_topics": [], "talking_points": []}
+    
+    if not reviewer_data or (not reviewer_data.get("distilled_topics") and not reviewer_data.get("talking_points")):
+        st.warning("No reviewer data found for this session.")
     else:
         # Display Distilled Topics
         distilled_topics = reviewer_data.get('distilled_topics', [])

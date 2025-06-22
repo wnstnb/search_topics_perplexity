@@ -2,15 +2,15 @@ from config import PERPLEXITY_API_KEY
 from openai import OpenAI # Import OpenAI
 import json # For parsing if sources are in a JSON string
 import os
-
-CACHE_FILE = "_cache_search_results.json"
-RAW_CACHE_FILE = "_cache_search_agent_raw_api_response.json"
+from typing import Optional
+from database import DatabaseHandler
 
 class SearchAgent:
     def __init__(self):
         if not PERPLEXITY_API_KEY:
             raise ValueError("PERPLEXITY_API_KEY not configured.")
         self.api_key = PERPLEXITY_API_KEY
+        self.db = DatabaseHandler()
         try:
             self.client = OpenAI(api_key=self.api_key, base_url="https://api.perplexity.ai")
             print("SearchAgent initialized with Perplexity API client.")
@@ -18,18 +18,16 @@ class SearchAgent:
             print(f"Error initializing Perplexity API client: {e}")
             raise
 
-    def search(self, topic: str) -> list:
+    def search(self, topic: str, session_id: Optional[int] = None) -> list:
         """Queries Perplexity API to find relevant content based on the topic."""
         print(f"Searching for topic: '{topic}' using Perplexity API (model: sonar-pro)")
         
-        if os.path.exists(CACHE_FILE):
-            try:
-                with open(CACHE_FILE, 'r') as f:
-                    cached_results = json.load(f)
-                print(f"Loaded {len(cached_results)} search results from cache: {CACHE_FILE}")
-                return cached_results
-            except Exception as e:
-                print(f"Error loading search results from cache {CACHE_FILE}: {e}. Proceeding with API call.")
+        # Check database cache first
+        if session_id and self.db.has_search_results(session_id):
+            cached_results = self.db.get_search_results(session_id)
+            print(f"Loaded {len(cached_results)} search results from database for session {session_id}")
+            # Convert database results to expected format
+            return [{"url": result.get("url"), "snippet": result.get("snippet")} for result in cached_results]
 
         messages = [
             {
@@ -70,13 +68,8 @@ class SearchAgent:
                     print(f"Warning: response.json() did not return valid JSON. Trying vars() for raw cache.")
                     full_response_dict = vars(response)
             
-            # Save the raw API response
-            try:
-                with open(RAW_CACHE_FILE, 'w') as f:
-                    json.dump(full_response_dict, f, indent=2)
-                print(f"Saved raw API response for SearchAgent to: {RAW_CACHE_FILE}")
-            except Exception as e:
-                print(f"Error saving raw API response for SearchAgent to {RAW_CACHE_FILE}: {e}")
+            # Prepare raw API response for database storage
+            raw_api_response = json.dumps(full_response_dict, indent=2)
 
             search_results_data = []
             
@@ -116,13 +109,13 @@ class SearchAgent:
             if not search_results_data:
                 print("Warning: Perplexity API call succeeded but no content was processed into search_results_data.")
 
-            if search_results_data: # Save to cache only if we have data
+            # Save to database if we have data and a session_id
+            if search_results_data and session_id:
                 try:
-                    with open(CACHE_FILE, 'w') as f:
-                        json.dump(search_results_data, f, indent=2)
-                    print(f"Saved {len(search_results_data)} search results to cache: {CACHE_FILE}")
+                    self.db.save_search_results(session_id, search_results_data, raw_api_response)
+                    print(f"Saved {len(search_results_data)} search results to database for session {session_id}")
                 except Exception as e:
-                    print(f"Error saving search results to cache {CACHE_FILE}: {e}")
+                    print(f"Error saving search results to database: {e}")
 
             return search_results_data
 

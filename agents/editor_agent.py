@@ -3,34 +3,32 @@ from config import GOOGLE_API_KEY
 import re # Import re module
 import os
 import json
-
-CACHE_FILE = "_cache_editor_linkedin_output.json"
-RAW_CACHE_FILE = "_cache_editor_agent_linkedin_raw_api_responses.txt" # Renamed for clarity
+from typing import Optional
+from database import DatabaseHandler
 
 class EditorAgent:
     def __init__(self):
         if not GOOGLE_API_KEY:
             raise ValueError("GOOGLE_API_KEY not configured.")
         genai.configure(api_key=GOOGLE_API_KEY)
+        self.db = DatabaseHandler()
         # Initialize Gemini 2.5 Pro model
         print("EditorAgent initialized with Gemini 2.5 Pro")
         self.model = genai.GenerativeModel('gemini-2.5-pro-preview-05-06') # Using 1.5 pro as per PRD
 
-    def craft_posts(self, distilled_content: dict, app_name: str, app_description: str, tuon_features_content: str) -> list:
+    def craft_posts(self, distilled_content: dict, app_name: str, app_description: str, tuon_features_content: str, session_id: Optional[int] = None) -> list:
         """
         Takes curated topics and pain points and crafts engaging LinkedIn posts,
         incorporating app features.
         """
         print(f"Crafting LinkedIn posts for {app_name} based on distilled content and features.")
 
-        if os.path.exists(CACHE_FILE):
-            try:
-                with open(CACHE_FILE, 'r') as f:
-                    cached_posts = json.load(f)
-                print(f"Loaded editor LinkedIn output from cache: {CACHE_FILE}")
-                return cached_posts
-            except Exception as e:
-                print(f"Error loading editor LinkedIn output from cache {CACHE_FILE}: {e}. Proceeding with generation.")
+        # Check database cache first
+        if session_id and self.db.has_editor_outputs(session_id):
+            cached_posts = self.db.get_editor_outputs(session_id)
+            print(f"Loaded editor LinkedIn output from database for session {session_id}")
+            # Convert database results to expected format
+            return [dict(post) for post in cached_posts]
 
         social_media_posts = []
         all_raw_api_responses = [] # Renamed from all_raw_mock_generations
@@ -110,22 +108,12 @@ class EditorAgent:
 
             social_media_posts.append(current_posts_data) # Use renamed variable
 
-        # Save to cache
-        if social_media_posts:
+        # Save to database if we have data and a session_id
+        if social_media_posts and session_id:
             try:
-                with open(CACHE_FILE, 'w') as f:
-                    json.dump(social_media_posts, f, indent=2)
-                print(f"Saved editor LinkedIn output to cache: {CACHE_FILE}")
+                self.db.save_editor_outputs(session_id, social_media_posts, all_raw_api_responses)
+                print(f"Saved editor LinkedIn output to database for session {session_id}")
             except Exception as e:
-                print(f"Error saving editor LinkedIn output to cache {CACHE_FILE}: {e}")
-        
-        # Save all raw API responses to a single file
-        if all_raw_api_responses:
-            try:
-                with open(RAW_CACHE_FILE, 'w') as f:
-                    f.write("\n".join(all_raw_api_responses))
-                print(f"Saved all raw API responses for EditorAgent to: {RAW_CACHE_FILE}")
-            except Exception as e:
-                print(f"Error saving raw API responses for EditorAgent to {RAW_CACHE_FILE}: {e}")
+                print(f"Error saving editor LinkedIn output to database: {e}")
 
         return social_media_posts 
