@@ -2,35 +2,39 @@ import google.generativeai as genai
 from config import GOOGLE_API_KEY
 import os
 import json
-
-CACHE_FILE = "_cache_reviewer_output.json"
-RAW_CACHE_FILE = "_cache_reviewer_agent_raw_api_response.txt"
+from typing import Optional
+from database import DatabaseHandler
 
 class ReviewerAgent:
     def __init__(self):
         if not GOOGLE_API_KEY:
             raise ValueError("GOOGLE_API_KEY not configured.")
         genai.configure(api_key=GOOGLE_API_KEY)
+        self.db = DatabaseHandler()
         # Initialize Gemini 2.5 Flash model
         # For now, we'll just print, model initialization will be more specific
         print("ReviewerAgent initialized with Gemini 2.5 Flash")
         self.model = genai.GenerativeModel('gemini-2.5-flash-preview-05-20') # Using 1.5 flash as per PRD
 
-    def review_and_distill(self, search_results: list, app_name: str, app_description: str, tuon_features_content: str) -> dict:
+    def review_and_distill(self, search_results: list, app_name: str, app_description: str, tuon_features_content: str, session_id: Optional[int] = None) -> dict:
         """
         Processes search results, identifies key pain points, and extracts topics
         relevant to the application being marketed, considering its specific features.
         """
         print(f"Reviewing search results for {app_name}: {app_description}, considering features.")
         
-        if os.path.exists(CACHE_FILE):
-            try:
-                with open(CACHE_FILE, 'r') as f:
-                    cached_output = json.load(f)
-                print(f"Loaded reviewer output from cache: {CACHE_FILE}")
-                return cached_output
-            except Exception as e:
-                print(f"Error loading reviewer output from cache {CACHE_FILE}: {e}. Proceeding with API call.")
+        # Check database cache first
+        if session_id and self.db.has_reviewer_output(session_id):
+            cached_output = self.db.get_reviewer_output(session_id)
+            print(f"💾 CACHE HIT: Loaded reviewer output from database for session {session_id}")
+            print(f"   🚀 Skipping API call - using cached data")
+            return cached_output
+        
+        if session_id:
+            print(f"💿 CACHE MISS: No cached reviewer output found for session {session_id}")
+            print(f"   🌐 Making API call to Gemini...")
+        else:
+            print(f"❌ NO SESSION ID: Cannot use caching, making API call to Gemini...")
         
         # Constructing a prompt for Gemini
         prompt_parts = [
@@ -74,13 +78,8 @@ class ReviewerAgent:
                 print("Error: Gemini response content is empty.")
                 return {"distilled_topics": [], "talking_points": []}
             
-            # Save the raw API response text before any further processing
-            try:
-                with open(RAW_CACHE_FILE, 'w') as f:
-                    f.write(api_response_text)
-                print(f"Saved raw API response text for ReviewerAgent to: {RAW_CACHE_FILE}")
-            except Exception as e:
-                print(f"Error saving raw API response text for ReviewerAgent to {RAW_CACHE_FILE}: {e}")
+            # Store raw API response for database storage
+            raw_api_response = api_response_text
 
             print(f"-- Reviewer Agent API Response --\\\\\\n{api_response_text[:500]}...\\\\\\\\n-- End of API Response Snippet --")
 
@@ -146,13 +145,18 @@ class ReviewerAgent:
             # import json # Already imported at the top
             parsed_json = json.loads(json_string) # Use the extracted json_string
             
-            # Save to cache
-            try:
-                with open(CACHE_FILE, 'w') as f:
-                    json.dump(parsed_json, f, indent=2)
-                print(f"Saved reviewer output to cache: {CACHE_FILE}")
-            except Exception as e:
-                print(f"Error saving reviewer output to cache {CACHE_FILE}: {e}")
+            # Save to database if we have a session_id
+            if session_id:
+                try:
+                    self.db.save_reviewer_output(
+                        session_id, 
+                        parsed_json.get("distilled_topics", []), 
+                        parsed_json.get("talking_points", []), 
+                        raw_api_response
+                    )
+                    print(f"Saved reviewer output to database for session {session_id}")
+                except Exception as e:
+                    print(f"Error saving reviewer output to database: {e}")
             
             return parsed_json
         except json.JSONDecodeError:

@@ -2,32 +2,36 @@ import http.client
 import json
 import os
 import urllib.parse # For URL encoding the query
+from typing import Optional
 from config import RAPIDAPI_API_KEY
-
-CACHE_FILE = "_cache_twitter_results.json"
-RAW_CACHE_FILE = "_cache_twitter_agent_raw_api_response.json"
+from database import DatabaseHandler
 
 class TwitterAgent:
     def __init__(self):
         if not RAPIDAPI_API_KEY:
             raise ValueError("RAPIDAPI_API_KEY not configured.")
         self.api_key = RAPIDAPI_API_KEY
+        self.db = DatabaseHandler()
         self.conn = http.client.HTTPSConnection("twitter241.p.rapidapi.com")
         print("TwitterAgent initialized with RapidAPI client.")
 
-    def search_tweets(self, query: str, count: int = 20, search_type: str = "Top") -> list:
+    def search_tweets(self, query: str, count: int = 20, search_type: str = "Top", session_id: Optional[int] = None) -> list:
         """Queries RapidAPI Twitter V2 to find tweets based on the query."""
         print(f"Searching for tweets matching query: '{query}' using RapidAPI (count: {count}, type: {search_type})")
 
-        # Check cache first
-        if os.path.exists(CACHE_FILE):
-            try:
-                with open(CACHE_FILE, 'r') as f:
-                    cached_results = json.load(f)
-                print(f"Loaded {len(cached_results)} tweet results from cache: {CACHE_FILE}")
-                return cached_results
-            except Exception as e:
-                print(f"Error loading tweet results from cache {CACHE_FILE}: {e}. Proceeding with API call.")
+        # Check database cache first
+        if session_id and self.db.has_twitter_results(session_id):
+            cached_results = self.db.get_twitter_results(session_id)
+            print(f"💾 CACHE HIT: Loaded {len(cached_results)} tweet results from database for session {session_id}")
+            print(f"   🚀 Skipping API call - using cached data")
+            # Convert database results to expected format
+            return [dict(result) for result in cached_results]
+        
+        if session_id:
+            print(f"💿 CACHE MISS: No cached twitter results found for session {session_id}")
+            print(f"   🌐 Making API call to RapidAPI...")
+        else:
+            print(f"❌ NO SESSION ID: Cannot use caching, making API call to RapidAPI...")
 
         headers = {
             'x-rapidapi-key': self.api_key,
@@ -44,17 +48,11 @@ class TwitterAgent:
             data = res.read()
             raw_response_text = data.decode("utf-8")
 
-            # Save the raw API response
+            # Prepare raw API response for database storage
             try:
-                with open(RAW_CACHE_FILE, 'w') as f:
-                    # Attempt to parse as JSON for pretty printing, if not, save as raw text
-                    try:
-                        json.dump(json.loads(raw_response_text), f, indent=2)
-                    except json.JSONDecodeError:
-                        f.write(raw_response_text)
-                print(f"Saved raw API response for TwitterAgent to: {RAW_CACHE_FILE}")
-            except Exception as e:
-                print(f"Error saving raw API response for TwitterAgent to {RAW_CACHE_FILE}: {e}")
+                raw_api_response = json.dumps(json.loads(raw_response_text), indent=2)
+            except json.JSONDecodeError:
+                raw_api_response = raw_response_text
 
             if res.status != 200:
                 print(f"Error from RapidAPI: {res.status} - {raw_response_text}")
@@ -166,13 +164,13 @@ class TwitterAgent:
                 if not ('globalObjects' in response_json and 'tweets' in response_json['globalObjects'] and tweet_results_data): # only show warning if not already processed globalObjects
                     print(f"Warning: No tweets extracted from primary paths or globalObjects. Response structure might have changed or contained no tweets. Raw response snippet: {raw_response_text[:500]}")
 
-            if tweet_results_data: # Save to cache only if we have data
+            # Save to database if we have data and a session_id
+            if tweet_results_data and session_id:
                 try:
-                    with open(CACHE_FILE, 'w') as f:
-                        json.dump(tweet_results_data, f, indent=2)
-                    print(f"Saved {len(tweet_results_data)} tweet results to cache: {CACHE_FILE}")
+                    self.db.save_twitter_results(session_id, tweet_results_data, raw_api_response)
+                    print(f"Saved {len(tweet_results_data)} tweet results to database for session {session_id}")
                 except Exception as e:
-                    print(f"Error saving tweet results to cache {CACHE_FILE}: {e}")
+                    print(f"Error saving tweet results to database: {e}")
             
             return tweet_results_data
 
